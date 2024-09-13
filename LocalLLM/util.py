@@ -1,3 +1,86 @@
+# Configuration
+class CFG:
+    seed = 42
+    preset = "deberta_v3_large_en" # name of pretrained backbone
+    train_seq_len = 1024 # max size of input sequence for training
+    train_batch_size = 2 * 8 # size of the input batch in training, x 2 as two GPUs
+    infer_seq_len = 2000 # max size of input sequence for inference
+    infer_batch_size = 2 * 2 # size of the input batch in inference, x 2 as two GPUs
+    epochs = 6 # number of epochs to train
+    lr_mode = "exp" # lr scheduler mode from one of "cos", "step", "exp"
+    
+    labels = ["B-EMAIL", "B-ID_NUM", "B-NAME_STUDENT", "B-PHONE_NUM",
+              "B-STREET_ADDRESS", "B-URL_PERSONAL", "B-USERNAME",
+              "I-ID_NUM", "I-NAME_STUDENT", "I-PHONE_NUM",
+              "I-STREET_ADDRESS","I-URL_PERSONAL","O"]
+    id2label = dict(enumerate(labels)) # integer label to BIO format label mapping
+    label2id = {v:k for k,v in id2label.items()} # BIO format label to integer label mapping
+    num_labels = len(labels) # number of PII (NER) tags
+    
+    train = True # whether to train or use already trained model
+
+# Loss: CrossEntropy
+class CrossEntropy(keras.losses.SparseCategoricalCrossentropy):
+    def __init__(self, ignore_class=-100, reduction=None, **args):
+        super().__init__(reduction=reduction, **args)
+        self.ignore_class = ignore_class
+
+    def call(self, y_true, y_pred):
+        y_true = ops.reshape(y_true, [-1])
+        y_pred = ops.reshape(y_pred, [-1, CFG.num_labels])
+        loss = super().call(y_true, y_pred)
+        if self.ignore_class is not None:
+            valid_mask = ops.not_equal(
+                y_true, ops.cast(self.ignore_class, y_pred.dtype)
+            )
+            loss = ops.where(valid_mask, loss, 0.0)
+            loss = ops.sum(loss)
+            loss /= ops.maximum(ops.sum(ops.cast(valid_mask, loss.dtype)), 1)
+        else:
+            loss = ops.mean(loss)
+        return loss
+
+# Metric: FBetaScore
+class FBetaScore(keras.metrics.FBetaScore):
+    def __init__(self, ignore_classes=[-100, 12], average="micro", beta=5.0,
+                 name="f5_score", **args):
+        super().__init__(beta=beta, average=average, name=name, **args)
+        self.ignore_classes = ignore_classes or []
+
+    def update_state(self, y_true, y_pred, sample_weight=None):
+        y_true = ops.convert_to_tensor(y_true, dtype=self.dtype)
+        y_pred = ops.convert_to_tensor(y_pred, dtype=self.dtype)
+        
+        y_true = ops.reshape(y_true, [-1])
+        y_pred = ops.reshape(y_pred, [-1, CFG.num_labels])
+            
+        valid_mask = ops.ones_like(y_true, dtype=self.dtype)
+        if self.ignore_classes:
+            for ignore_class in self.ignore_classes:
+                valid_mask &= ops.not_equal(y_true, ops.cast(ignore_class, y_pred.dtype))
+        valid_mask = ops.expand_dims(valid_mask, axis=-1)
+        
+        y_true = ops.one_hot(y_true, CFG.num_labels)
+        
+        if not self._built:
+            self._build(y_true.shape, y_pred.shape)
+
+        threshold = ops.max(y_pred, axis=-1, keepdims=True)
+        y_pred = ops.logical_and(
+            y_pred >= threshold, ops.abs(y_pred) > 1e-9
+        )
+
+        y_pred = ops.cast(y_pred, dtype=self.dtype)
+        y_true = ops.cast(y_true, dtype=self.dtype)
+        
+        tp = ops.sum(y_pred * y_true * valid_mask, self.axis)
+        fp = ops.sum(y_pred * (1 - y_true) * valid_mask, self.axis)
+        fn = ops.sum((1 - y_pred) * y_true * valid_mask, self.axis)
+            
+        self.true_positives.assign_add(tp)
+        self.false_positives.assign_add(fp)
+        self.false_negatives.assign_add(fn)
+
 # Data Processing
 def get_tokens(words, seq_len, packer):
     # Tokenize input
