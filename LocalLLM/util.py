@@ -73,3 +73,25 @@ def process_data(seq_len=720, has_label=True, return_ids=False):
             return inputs
 
     return process
+
+def build_dataset(words, labels=None, return_ids=False, batch_size=4,
+                  seq_len=512, shuffle=False, cache=True, drop_remainder=True):
+    AUTO = tf.data.AUTOTUNE 
+
+    slices = {"words": tf.ragged.constant(words)}
+    if labels is not None:
+        slices.update({"labels": tf.ragged.constant(labels)})
+
+    ds = tf.data.Dataset.from_tensor_slices(slices)
+    ds = ds.map(process_data(seq_len=seq_len,
+                             has_label=labels is not None, 
+                             return_ids=return_ids), num_parallel_calls=AUTO) # apply processing
+    ds = ds.cache() if cache else ds  # cache dataset
+    if shuffle: # shuffle dataset
+        ds = ds.shuffle(1024, seed=CFG.seed)  
+        opt = tf.data.Options() 
+        opt.experimental_deterministic = False
+        ds = ds.with_options(opt)
+    ds = ds.batch(batch_size, drop_remainder=drop_remainder)  # batch dataset
+    ds = ds.prefetch(AUTO)  # prefetch next batch
+    return ds
