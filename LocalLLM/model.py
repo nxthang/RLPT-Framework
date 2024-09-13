@@ -18,7 +18,7 @@ import plotly.express as px
 import util 
 
 
-keras.utils.set_random_seed(CFG.seed)
+keras.utils.set_random_seed(util.CFG.seed)
 
 # Get devices default "gpu" or "tpu"
 devices = keras.distribution.list_devices()
