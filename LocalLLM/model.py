@@ -15,6 +15,7 @@ from sklearn.model_selection import train_test_split
 
 import plotly.graph_objs as go
 import plotly.express as px
+import util 
 
 # Configuration
 class CFG:
@@ -71,4 +72,14 @@ train_words, valid_words, train_labels, valid_labels = train_test_split(
     words, labels, test_size=0.2, random_state=CFG.seed
 )
 
+# To convert string input or list of strings input to numerical tokens
+tokenizer = keras_nlp.models.DebertaV3Tokenizer.from_preset(
+    CFG.preset,
+)
 
+# Preprocessing layer to add spetical tokens: [CLS], [SEP], [PAD]
+packer = keras_nlp.layers.MultiSegmentPacker(
+    start_value=tokenizer.cls_token_id,
+    end_value=tokenizer.sep_token_id,
+    sequence_length=10,
+)
