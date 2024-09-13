@@ -17,26 +17,6 @@ import plotly.graph_objs as go
 import plotly.express as px
 import util 
 
-# Configuration
-class CFG:
-    seed = 42
-    preset = "deberta_v3_large_en" # name of pretrained backbone
-    train_seq_len = 1024 # max size of input sequence for training
-    train_batch_size = 2 * 8 # size of the input batch in training, x 2 as two GPUs
-    infer_seq_len = 2000 # max size of input sequence for inference
-    infer_batch_size = 2 * 2 # size of the input batch in inference, x 2 as two GPUs
-    epochs = 6 # number of epochs to train
-    lr_mode = "exp" # lr scheduler mode from one of "cos", "step", "exp"
-    
-    labels = ["B-EMAIL", "B-ID_NUM", "B-NAME_STUDENT", "B-PHONE_NUM",
-              "B-STREET_ADDRESS", "B-URL_PERSONAL", "B-USERNAME",
-              "I-ID_NUM", "I-NAME_STUDENT", "I-PHONE_NUM",
-              "I-STREET_ADDRESS","I-URL_PERSONAL","O"]
-    id2label = dict(enumerate(labels)) # integer label to BIO format label mapping
-    label2id = {v:k for k,v in id2label.items()} # BIO format label to integer label mapping
-    num_labels = len(labels) # number of PII (NER) tags
-    
-    train = True # whether to train or use already trained model
 
 keras.utils.set_random_seed(CFG.seed)
 
@@ -83,3 +63,32 @@ packer = keras_nlp.layers.MultiSegmentPacker(
     end_value=tokenizer.sep_token_id,
     sequence_length=10,
 )
+
+# Build Train & Valid Dataloader
+train_ds = util.build_dataset(train_words, train_labels,  batch_size=CFG.train_batch_size,
+                         seq_len=CFG.train_seq_len, shuffle=True)
+
+valid_ds = util.build_dataset(valid_words, valid_labels, batch_size=CFG.train_batch_size, 
+                         seq_len=CFG.train_seq_len, shuffle=False)
+
+
+# Modeling
+# Build Token Classification model
+backbone = keras_nlp.models.DebertaV3Backbone.from_preset(
+    CFG.preset,
+)
+out = backbone.output
+out = keras.layers.Dense(CFG.num_labels, name="logits")(out)
+out = keras.layers.Activation("softmax", dtype="float32", name="prediction")(out)
+model = keras.models.Model(backbone.input, out)
+
+# Compile model for optimizer, loss and metric
+model.compile(
+    optimizer=keras.optimizers.Adam(learning_rate=2e-5),
+    loss=CrossEntropy(),
+    metrics=[FBetaScore()],
+)
+
+# Summary of the model architecture
+model.summary()
+
