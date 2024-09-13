@@ -92,3 +92,19 @@ model.compile(
 # Summary of the model architecture
 model.summary()
 
+lr_cb = util.get_lr_callback(CFG.train_batch_size, mode=CFG.lr_mode, plot=True)
+
+# Train the model
+if util.CFG.train:
+    history = model.fit(
+        train_ds,
+        validation_data=valid_ds,
+        epochs=CFG.epochs,
+        callbacks=[lr_cb],
+        verbose=1,
+    )
+else:
+    model.load_weights("/input/save_model/model.weights.h5")
+
+model.save_weights("/input/save_model/model.weights.h5")
+
