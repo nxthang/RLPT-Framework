@@ -1,3 +1,21 @@
+# Import libraries
+import os
+os.environ["KERAS_BACKEND"] = "tensorflow"
+
+import keras
+import keras_nlp
+from keras import ops
+import tensorflow as tf
+
+import json
+import numpy as np
+import pandas as pd
+from tqdm.notebook import tqdm
+from sklearn.model_selection import train_test_split
+
+import plotly.graph_objs as go
+import plotly.express as px
+
 # Configuration
 class CFG:
     seed = 42
