@@ -45,16 +45,16 @@ labels = np.empty(len(data), dtype=object)
 # Fill the arrays
 for i, x in tqdm(enumerate(data), total=len(data)):
     words[i] = np.array(x["tokens"])
-    labels[i] = np.array([CFG.label2id[label] for label in x["labels"]])
+    labels[i] = np.array([util.CFG.label2id[label] for label in x["labels"]])
 
 # Splitting the data into training and testing sets
 train_words, valid_words, train_labels, valid_labels = train_test_split(
-    words, labels, test_size=0.2, random_state=CFG.seed
+    words, labels, test_size=0.2, random_state=util.CFG.seed
 )
 
 # To convert string input or list of strings input to numerical tokens
 tokenizer = keras_nlp.models.DebertaV3Tokenizer.from_preset(
-    CFG.preset,
+    util.CFG.preset,
 )
 
 # Preprocessing layer to add spetical tokens: [CLS], [SEP], [PAD]
@@ -65,28 +65,28 @@ packer = keras_nlp.layers.MultiSegmentPacker(
 )
 
 # Build Train & Valid Dataloader
-train_ds = util.build_dataset(train_words, train_labels,  batch_size=CFG.train_batch_size,
-                         seq_len=CFG.train_seq_len, shuffle=True)
+train_ds = util.build_dataset(train_words, train_labels,  batch_size=util.CFG.train_batch_size,
+                         seq_len=util.CFG.train_seq_len, shuffle=True)
 
-valid_ds = util.build_dataset(valid_words, valid_labels, batch_size=CFG.train_batch_size, 
-                         seq_len=CFG.train_seq_len, shuffle=False)
+valid_ds = util.build_dataset(valid_words, valid_labels, batch_size=util.CFG.train_batch_size, 
+                         seq_len=util.CFG.train_seq_len, shuffle=False)
 
 
 # Modeling
 # Build Token Classification model
 backbone = keras_nlp.models.DebertaV3Backbone.from_preset(
-    CFG.preset,
+    util.CFG.preset,
 )
 out = backbone.output
-out = keras.layers.Dense(CFG.num_labels, name="logits")(out)
+out = keras.layers.Dense(util.CFG.num_labels, name="logits")(out)
 out = keras.layers.Activation("softmax", dtype="float32", name="prediction")(out)
 model = keras.models.Model(backbone.input, out)
 
 # Compile model for optimizer, loss and metric
 model.compile(
     optimizer=keras.optimizers.Adam(learning_rate=2e-5),
-    loss=CrossEntropy(),
-    metrics=[FBetaScore()],
+    loss=util.CrossEntropy(),
+    metrics=[util.FBetaScore()],
 )
 
 # Summary of the model architecture
