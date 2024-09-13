@@ -92,7 +92,7 @@ model.compile(
 # Summary of the model architecture
 model.summary()
 
-lr_cb = util.get_lr_callback(CFG.train_batch_size, mode=CFG.lr_mode, plot=True)
+lr_cb = util.get_lr_callback(util.CFG.train_batch_size, mode=util.CFG.lr_mode, plot=True)
 
 # Train the model
 if util.CFG.train:
@@ -108,3 +108,44 @@ else:
 
 model.save_weights("/input/save_model/model.weights.h5")
 
+# Evaluation
+
+# Build Test Dataloader
+# Build Validation dataloader with "infer_seq_len"
+valid_ds = util.build_dataset(valid_words, valid_labels, return_ids=False, batch_size=util.CFG.infer_batch_size,
+                        seq_len=util.CFG.infer_seq_len, shuffle=False, cache=False)
+# Evaluate
+model.evaluate(valid_ds, return_dict=True, verbose=0)
+
+# Inference
+# Test data
+test_data = json.load(open(f"{BASE_PATH}/test.json"))
+
+# Ensure number of samples is divisble by number of devices
+need_samples  = len(devices) - len(test_data) % len(devices)
+for _ in range(need_samples):
+    test_data.append(test_data[-1]) # repeat the last sample
+    
+# Initialize empty arrays
+test_words = np.empty(len(test_data), dtype=object)
+test_docs = np.empty(len(test_data), dtype=np.int32)
+
+# Fill the arrays
+for i, x in tqdm(enumerate(test_data), total=len(test_data)):
+    test_words[i] = np.array(x["tokens"])
+    test_docs[i] = x["document"]
+
+# Get token ids
+id_ds = util.build_dataset(test_words, return_ids=True, batch_size=len(test_words), 
+                        seq_len=CFG.infer_seq_len, shuffle=False, cache=False, drop_remainder=False)
+test_token_ids = ops.convert_to_numpy([ids for ids in iter(id_ds)][0])
+
+# Build test dataloader
+test_ds = build_dataset(test_words, return_ids=False, batch_size=CFG.infer_batch_size,
+                        seq_len=CFG.infer_seq_len, shuffle=False, cache=False, drop_remainder=False)
+
+# Do inference
+test_preds = model.predict(test_ds, verbose=1)
+
+# Convert probabilities to class labels via max confidence
+test_preds = np.argmax(test_preds, axis=-1)
